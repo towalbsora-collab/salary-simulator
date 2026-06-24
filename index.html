@@ -220,7 +220,7 @@ select:focus { border-color: var(--accent); outline: none; }
         <div class="field" style="margin-bottom:12px;">
           <label>残業代の支給タイプ</label>
           <select id="ot_type">
-            <option value="full" selected>全額別途支給（年収には実際に支払われた残業代も込み）</option>
+            <option value="full" selected>全額別途支給（年収には残業代を含まない）</option>
             <option value="minashi">みなし残業あり（一定時間分は年収に含まれる）</option>
             <option value="none">残業代なし（サービス残業）</option>
           </select>
@@ -235,7 +235,7 @@ select:focus { border-color: var(--accent); outline: none; }
         <div class="field" style="margin-top:10px;">
           <label>月平均残業時間（実態）</label>
           <div class="input-wrap"><input type="number" id="overtime" value="0" min="0" max="200" step="1"><span class="input-unit">時間/月</span></div>
-          <span class="hint" id="ot-hint">実態とみなし時間の大きい方を労働時間としてカウントします（みなし分も労働実態としてみなす）</span>
+          <span class="hint" id="ot-hint">求人票だけでは実態は分かりません。口コミサイト等で分かればその値を、不明な場合はみなし時間と同じと仮定した値が自動入力されます（上書き可）</span>
         </div>
 
         <div class="section-head">有給休暇</div>
@@ -302,11 +302,11 @@ select:focus { border-color: var(--accent); outline: none; }
       <div class="row-item"><span class="rl">年間休日（入力値）</span><span class="rv" id="ri-holiday">—</span></div>
       <div class="row-item" id="ri-paid-row" style="display:none"><span class="rl">有給取得日数<span class="badge badge-green">加算</span></span><span class="rv" id="ri-paid">—</span></div>
       <div class="row-item"><span class="rl">年収（入力値）</span><span class="rv" id="ri-net-annual-input">—</span></div>
-      <div class="row-item" id="ri-otpay-row" style="display:none"><span class="rl">残業時間（別途支給分）<span class="badge badge-green">分母から除外</span></span><span class="rv" id="ri-otpay">—</span></div>
+      <div class="row-item" id="ri-otpay-row" style="display:none"><span class="rl">残業代（別途支給・概算）<span class="badge badge-green">加算</span></span><span class="rv" id="ri-otpay">—</span></div>
       <div class="row-item"><span class="rl">計算に使う年収</span><span class="rv" id="ri-net-annual">—</span></div>
       <div class="row-item"><span class="rl">実効年間休日</span><span class="rv" id="ri-eff-holiday">—</span></div>
       <div class="row-item"><span class="rl">所定労働日数 × 所定労働時間</span><span class="rv" id="ri-fixed-h">—</span></div>
-      <div class="row-item" id="ri-minashi-row" style="display:none"><span class="rl">みなし残業時間（年間）<span class="badge badge-blue">下限</span></span><span class="rv" id="ri-minashi">—</span></div>
+      <div class="row-item" id="ri-minashi-row" style="display:none"><span class="rl">みなし残業時間（月・参考）</span><span class="rv" id="ri-minashi">—</span></div>
       <div class="row-item"><span class="rl">実残業時間（年間）</span><span class="rv" id="ri-ot">—</span></div>
       <div class="row-item"><span class="rl">年間総労働時間</span><span class="rv" id="ri-total-h">—</span></div>
       <div class="row-item"><span class="rl">比較基準の年間総労働時間</span><span class="rv" id="ri-base-h">—</span></div>
@@ -378,18 +378,11 @@ function calc() {
   const fixedDays = 365 - effHoliday;
   const fixedHours = fixedDays * wh;
 
-  let minashiHYear = 0, netOtHours = 0, otExcludedHours = 0;
-  if (otType === 'minashi') {
-    minashiHYear = minashiH * 12;
-    netOtHours = Math.max(otH, minashiH) * 12;
-  } else if (otType === 'full') {
-    netOtHours = 0;
-    otExcludedHours = otH * 12;
-  } else {
-    netOtHours = otH * 12;
-  }
+  const netOtHours = otH * 12;
+  const baseRate = fixedHours > 0 ? annual / fixedHours : 0;
+  const otPayYear = otType === 'full' ? baseRate * 1.25 * netOtHours : 0;
 
-  const netAnnual = annual;
+  const netAnnual = annual + otPayYear;
   const totalHours = fixedHours + netOtHours;
   const baseFixedDays = 365 - H0;
   const baseTotalHours = baseFixedDays * wh0;
@@ -412,7 +405,7 @@ function calc() {
   document.getElementById('bd-fixed').textContent = Math.round(fixedHours)+'時間';
   document.getElementById('bd-fixed-s').textContent = Math.round(fixedDays)+'日 × '+wh+'h';
   document.getElementById('bd-ot').textContent = r1(netOtHours)+'時間';
-  document.getElementById('bd-ot-s').textContent = otType==='full' ? '別途支給のため対象外' : otType==='minashi' ? 'max('+otH+', '+minashiH+')h × 12' : otH+'h × 12（無給）';
+  document.getElementById('bd-ot-s').textContent = otH+'h × 12';
   document.getElementById('bd-total').textContent = r1(totalHours)+'時間';
   document.getElementById('bd-rate').textContent = Math.round(hourRate).toLocaleString('ja-JP')+'円';
 
@@ -420,12 +413,12 @@ function calc() {
   document.getElementById('ri-paid').textContent = '+'+r1(paidDays)+'日';
   document.getElementById('ri-paid-row').style.display = paidDays>0 ? '' : 'none';
   document.getElementById('ri-net-annual-input').textContent = fmtYen(annual);
-  document.getElementById('ri-otpay').textContent = '-'+r1(otExcludedHours)+'時間（年収には込み・別途公平に支給済みのため労働時間に含めない）';
-  document.getElementById('ri-otpay-row').style.display = otExcludedHours>0 ? '' : 'none';
+  document.getElementById('ri-otpay').textContent = '+'+fmtYen(otPayYear)+'（時給'+Math.round(baseRate)+'円 × 1.25 × '+r1(netOtHours)+'h・概算）';
+  document.getElementById('ri-otpay-row').style.display = otPayYear>0 ? '' : 'none';
   document.getElementById('ri-net-annual').textContent = fmtYen(netAnnual);
   document.getElementById('ri-eff-holiday').textContent = r1(effHoliday)+'日';
   document.getElementById('ri-fixed-h').textContent = Math.round(fixedDays)+'日 × '+wh+'h = '+Math.round(fixedHours)+'時間';
-  document.getElementById('ri-minashi').textContent = minashiH+'h × 12 = '+minashiHYear+'時間';
+  document.getElementById('ri-minashi').textContent = minashiH+'h/月（実際の残業時間を下で入力）';
   document.getElementById('ri-minashi-row').style.display = otType==='minashi' ? '' : 'none';
   document.getElementById('ri-ot').textContent = r1(netOtHours)+'時間';
   document.getElementById('ri-total-h').textContent = Math.round(fixedHours)+' + '+r1(netOtHours)+' = '+r1(totalHours)+'時間';
@@ -465,13 +458,27 @@ function calc() {
   pctEl.textContent = '目標の'+pct.toFixed(1)+'%';
 }
 
+let otManuallySet = false;
+document.getElementById('overtime').addEventListener('input', function() { otManuallySet = true; });
+
+function syncOtFromMinashi() {
+  if (otManuallySet) return;
+  if (document.getElementById('ot_type').value !== 'minashi') return;
+  document.getElementById('overtime').value = document.getElementById('minashi_hours').value;
+}
+
 document.getElementById('ot_type').addEventListener('change', function() {
   const v = this.value;
   document.getElementById('panel_minashi').classList.toggle('open', v==='minashi');
   const hint = document.getElementById('ot-hint');
-  if (v==='full') hint.textContent = '年収に残業代込みで支払われるため、残業時間は労働時間（分母）に含めません';
-  else if (v==='minashi') hint.textContent = '実態とみなし時間の大きい方を労働時間としてカウントします（みなし分も労働実態としてみなす）';
+  if (v==='full') hint.textContent = '実態の残業時間分、割増（時給×1.25）で別途支給されたと仮定して年収に加算します';
+  else if (v==='minashi') hint.textContent = '実態の残業時間をそのまま労働時間としてカウントします（年収はみなし分込みで変わりません）';
   else hint.textContent = '残業代は支給されませんが、実際の労働時間として計算します';
+  syncOtFromMinashi();
+  calc();
+});
+document.getElementById('minashi_hours').addEventListener('input', function() {
+  syncOtFromMinashi();
   calc();
 });
 document.getElementById('acc-trigger').addEventListener('click', function() {
@@ -480,7 +487,7 @@ document.getElementById('acc-trigger').addEventListener('click', function() {
 });
 
 ['annual','bonus','holiday','work_hours','base_holiday','base_hours','target',
- 'minashi_hours','overtime','paid_grant','paid_rate'].forEach(function(id) {
+ 'overtime','paid_grant','paid_rate'].forEach(function(id) {
   document.getElementById(id).addEventListener('input', calc);
 });
 
