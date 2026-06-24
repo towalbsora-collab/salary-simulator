@@ -301,7 +301,9 @@ select:focus { border-color: var(--accent); outline: none; }
       <div class="divider"></div>
       <div class="row-item"><span class="rl">年間休日（入力値）</span><span class="rv" id="ri-holiday">—</span></div>
       <div class="row-item" id="ri-paid-row" style="display:none"><span class="rl">有給取得日数<span class="badge badge-green">加算</span></span><span class="rv" id="ri-paid">—</span></div>
-      <div class="row-item"><span class="rl">年収（入力値）</span><span class="rv" id="ri-net-annual">—</span></div>
+      <div class="row-item"><span class="rl">年収（入力値）</span><span class="rv" id="ri-net-annual-input">—</span></div>
+      <div class="row-item" id="ri-otpay-row" style="display:none"><span class="rl">残業代（別途支給・概算）<span class="badge badge-green">加算</span></span><span class="rv" id="ri-otpay">—</span></div>
+      <div class="row-item"><span class="rl">計算に使う年収</span><span class="rv" id="ri-net-annual">—</span></div>
       <div class="row-item"><span class="rl">実効年間休日</span><span class="rv" id="ri-eff-holiday">—</span></div>
       <div class="row-item"><span class="rl">所定労働日数 × 所定労働時間</span><span class="rv" id="ri-fixed-h">—</span></div>
       <div class="row-item" id="ri-minashi-row" style="display:none"><span class="rl">みなし残業時間（年間）<span class="badge badge-blue">下限</span></span><span class="rv" id="ri-minashi">—</span></div>
@@ -372,19 +374,23 @@ function calc() {
   document.getElementById('hint-monthly').textContent = '月給換算: '+fmtYen(monthly);
   document.getElementById('derived-paid').textContent = '有給取得日数: '+r1(paidDays)+'日（'+paidGrant+'日 × '+paidRate+'%）';
 
-  const netAnnual = annual;
   const effHoliday = H + paidDays;
   const fixedDays = 365 - effHoliday;
   const fixedHours = fixedDays * wh;
+  const baseRate = fixedHours > 0 ? annual / fixedHours : 0;
 
-  let minashiHYear = 0, netOtHours = 0;
+  let minashiHYear = 0, netOtHours = 0, otPayYear = 0;
   if (otType === 'minashi') {
     minashiHYear = minashiH * 12;
     netOtHours = Math.max(otH, minashiH) * 12;
+  } else if (otType === 'full') {
+    netOtHours = otH * 12;
+    otPayYear = baseRate * 1.25 * netOtHours;
   } else {
     netOtHours = otH * 12;
   }
 
+  const netAnnual = annual + otPayYear;
   const totalHours = fixedHours + netOtHours;
   const baseFixedDays = 365 - H0;
   const baseTotalHours = baseFixedDays * wh0;
@@ -392,8 +398,8 @@ function calc() {
   const hourRate = totalHours > 0 ? netAnnual / totalHours : 0;
   const realSalary = hourRate * baseTotalHours;
   const needed = baseTotalHours > 0 ? S0 / baseTotalHours * totalHours : 0;
-  const gap = needed - annual;
-  const pct = needed > 0 ? Math.min(100, annual / needed * 100) : 100;
+  const gap = needed - netAnnual;
+  const pct = needed > 0 ? Math.min(100, netAnnual / needed * 100) : 100;
 
   document.getElementById('out-base-total').textContent = Math.round(baseTotalHours)+'時間';
   document.getElementById('info-h0').textContent = Math.round(H0);
@@ -414,6 +420,9 @@ function calc() {
   document.getElementById('ri-holiday').textContent = H+'日';
   document.getElementById('ri-paid').textContent = '+'+r1(paidDays)+'日';
   document.getElementById('ri-paid-row').style.display = paidDays>0 ? '' : 'none';
+  document.getElementById('ri-net-annual-input').textContent = fmtYen(annual);
+  document.getElementById('ri-otpay').textContent = '+'+fmtYen(otPayYear)+'（時給'+Math.round(baseRate)+'円 × 1.25 × '+r1(netOtHours)+'h）';
+  document.getElementById('ri-otpay-row').style.display = otPayYear>0 ? '' : 'none';
   document.getElementById('ri-net-annual').textContent = fmtYen(netAnnual);
   document.getElementById('ri-eff-holiday').textContent = r1(effHoliday)+'日';
   document.getElementById('ri-fixed-h').textContent = Math.round(fixedDays)+'日 × '+wh+'h = '+Math.round(fixedHours)+'時間';
